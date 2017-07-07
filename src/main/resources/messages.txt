@@ -1,0 +1,5 @@
+email.reset.subject={0} Password Reset
+email.reset.body={0},\n\nSomeone requested that the password for your {1} account be reset.\nPlease use the following link to reset your password: {2}\n\nIf you did not request a password reset, you can safely ignore this email.\n\nThanks,\nThe {1} Team
+
+email.passwordChange.subject={0} Password Change
+email.passwordChange.body={0},\n\nYour password on {1} has been successfully changed.\nIf this happened without your knowledge, please immediately contact {1} administrators.\n\nHave a good day!\n{1}

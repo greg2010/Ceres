@@ -1,0 +1,62 @@
+---
+permission_map:
+  - name: "registration"
+    bit_position: 0
+    description: "Verify that registration is valid. 0 - Banned, 1 - valid"
+  - name: "admin"
+    bit_position: 1
+    description: "Gives access to admin panel. 0 - no access, 1 - access allowed."
+  - name: "posmon_access"
+    bit_position: 2
+    description: "//reserved"
+  - name: "im_access"
+    bit_position: 10
+    description: "Allowed to register in jabber. 0 - no access, 1 - access granted"
+  - name: "im_fc_roaming"
+    bit_position: 11
+    description: "Allows to broadcast @all. 0 - no access, 1 - access allowed."
+  - name: "im_fc_cta"
+    bit_position: 12
+    description: "//todo fillin"
+  - name: "im_overmind"
+    bit_position: 13
+    description: "//todo fillin"
+  - name: "im_dreadnought"
+    bit_position: 15
+    description: "NULL"
+  - name: "im_carrier"
+    bit_position: 16
+    description: "NULL"
+  - name: "im_supercarrier"
+    bit_position: 17
+    description: "NULL"
+  - name: "im_titan"
+    bit_position: 18
+    description: "NULL"
+  - name: "voice_access"
+    bit_position: 20
+    description: "Allows to register in coalition TS. 0 - no access, 1 - access granted"
+  - name: "voice_mute"
+    bit_position: 21
+    description: "Mute group for TS. 0 - no mute, 1 - mute"
+  - name: "voice_channelcom"
+    bit_position: 22
+    description: "Allows to have Channel Commander group in TS. 0 - no access, 1 - has access"
+  - name: "voice_fc_cta"
+    bit_position: 23
+    description: "Allows to have FC roles in TS. 0 - no access, 1 - has access"
+  - name: "voice_fc_roaming"
+    bit_position: 24
+    description: "Roaming FC group for TS. 0 - no access, 1 - has access."
+  - name: "voice_overmind"
+    bit_position: 25
+    description: "TS group Overmind. 0 - no access, 1 - has access"
+  - name: "voice_server_admin"
+    bit_position: 26
+    description: "//sexy"
+  - name: "voice_dreadnought"
+    bit_position: 27
+    description: "Dreadnought group"
+  - name: "voice_supercarrier"
+    bit_position: 29
+    description: "NULL"
