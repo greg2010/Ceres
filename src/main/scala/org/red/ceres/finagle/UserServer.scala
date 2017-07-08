@@ -9,8 +9,18 @@ import scala.concurrent.ExecutionContext
 import com.twitter.util.{Future => TFuture}
 import com.twitter.bijection.twitter_util.UtilBijections.twitter2ScalaFuture
 import com.twitter.bijection.Conversion.asMethod
+import org.red.ceres.external.auth.EveApiClient
 
-class UserServer(userController: => UserController)(implicit ec: ExecutionContext) extends UserService[TFuture] {
+class UserServer(userController: => UserController, eveApiClient: => EveApiClient)
+                (implicit ec: ExecutionContext) extends UserService[TFuture] {
+  override def getEveUser(credentials: LegacyCredentials): TFuture[EveUserDataList] = {
+    val ceresCreds = CeresLegacyCredentials(
+      ApiKey(credentials.keyId, credentials.vCode),
+      credentials.characterId,
+      credentials.name)
+    eveApiClient.fetchUser(ceresCreds).map(nel => EveUserDataList(nel.head, nel.tail)).as[TFuture[EveUserDataList]]
+  }
+
   override def createLegacyUser(email: String,
                                 credentials: LegacyCredentials,
                                 password: String): TFuture[UserMini] = {

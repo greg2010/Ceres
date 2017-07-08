@@ -21,7 +21,7 @@ object ApplicationMain extends App with LazyLogging {
 
   lazy val scheduleController = new ScheduleController(ceresConfig, userController)
 
-  val userServer = new TUserServer(ceresConfig).build(new UserServer(userController))
+  val userServer = new TUserServer(ceresConfig).build(new UserServer(userController, eveApiClient))
 
   Await.ready(userServer)
 }

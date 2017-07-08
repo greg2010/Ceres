@@ -30,8 +30,7 @@ scalacOptions ++= Seq("-deprecation", "-feature")
 credentials += Credentials(Path.userHome / ".ivy2" / ".credentials")
 
 resolvers ++=
-  Seq(Resolver.bintrayRepo("andimiller", "maven"),
-    "Artifactory Realm" at "http://maven.red.greg2010.me/artifactory/sbt-local/")
+  Seq("Artifactory Realm" at "http://maven.red.greg2010.me/artifactory/sbt-local/")
 
 val circeVersion = "0.8.0"
 libraryDependencies ++= Seq(
@@ -47,13 +46,11 @@ libraryDependencies ++= Seq(
   "moe.pizza" %% "eveapi" % "0.58-SNAPSHOT",
   "org.red" %% "reddb" % "1.0.7-SNAPSHOT",
   "org.red" %% "iris" % "0.0.1-SNAPSHOT",
-  //"org.red" %% "eveapi-esi" % "1.0.0-SNAPSHOT",
   "net.troja.eve" % "eve-esi" % "1.0.0",
   "org.glassfish.jersey.core" % "jersey-common" % "2.25.1",
   "io.monix" %% "monix" % "2.3.0",
   "org.matthicks" %% "mailgun4s" % "1.0.4",
   "com.osinka.i18n" %% "scala-i18n" % "1.0.2",
-  "com.github.theholywaffle" % "teamspeak3-api" % "1.0.14",
   "com.gilt" %% "gfc-concurrent" % "0.3.5",
   "io.circe" %% "circe-core" % circeVersion,
   "io.circe" %% "circe-generic" % circeVersion,
