@@ -8,6 +8,8 @@
     <logger name="slick" level="WARN"/>
     <logger name="com.zaxxer.hikari" level="WARN"/>
     <logger name="io.netty" level="WARN"/>
+    <logger name="com.ning" level="WARN"/>
+
 
     <root level="debug">
         <appender-ref ref="STDOUT"/>

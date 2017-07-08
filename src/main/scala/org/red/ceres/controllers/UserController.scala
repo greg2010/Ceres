@@ -104,14 +104,34 @@ class UserController(permissionController: => PermissionController,
     val query = Coalition.UsersView
       .filter(u => u.email === nameOrEmail || u.characterName === nameOrEmail)
       .take(1)
-    val f = dbAgent.run(query.result).map {
-      _.headOption.map(u => User.apply(u)) match {
-        case Some(User(eveUserData, userId, _, Some(password), Some(salt), isBanned, _, _, _))
-          if hasher(password, salt) == providedPassword && !isBanned =>
-          UserMini(eveUserData.characterName, userId, eveUserData.characterId)
-        case _ =>
-          throw AuthenticationException("User with corresponding login and password not found", "")
+
+    val f = dbAgent.run(query.result).flatMap {
+      _.headOption match {
+        case Some(r) =>
+          permissionController.calculateAclPermissionsByUserId(r.userId.get)
+            .map { perms =>
+              User.apply(r, perms) match {
+                case User(eveUserData, userId, _, Some(password), Some(salt), isBanned, _, _, _, _)
+                  if hasher(providedPassword, salt) == password && !isBanned =>
+                  UserMini(eveUserData.characterName, userId, eveUserData.characterId, perms.map(_.toPermissionBit))
+                case User(eveUserData, userId, _, Some(password), Some(salt), isBanned, _, _, _, _)
+                  if hasher(providedPassword, salt) == password && isBanned =>
+                  logger.warn(s"Banned user attempted to login nameOrLogin=$nameOrEmail reason=banned event=user.login.banned")
+                  throw AuthenticationException("User is banned", "")
+                case User(eveUserData, userId, _, Some(password), Some(salt), isBanned, _, _, _, _)
+                  if hasher(providedPassword, salt) != password =>
+                  logger.warn(s"User failed to login nameOrLogin=$nameOrEmail reason=badPassword event=user.login.failure")
+                  throw AuthenticationException("User with corresponding login and password not found", "")
+                case _ =>
+                  logger.error(s"Unknown error during login nameOrLogin=$nameOrEmail reason=unknown event=user.login.failure")
+                  throw new InternalError("User with corresponding login and password not found")
+              }
+            }
+        case None =>
+          logger.warn(s"User failed to login nameOrLogin=$nameOrEmail reason=badLogin event=user.login.failure")
+          Future.failed(AuthenticationException("User with corresponding login and password not found", ""))
       }
+
     }
     f.onComplete {
       case Success(res) =>
@@ -133,12 +153,18 @@ class UserController(permissionController: => PermissionController,
 
 
   def getUser(userId: Int): Future[User] = {
-    val f = dbAgent.run(Coalition.UsersView.filter(_.userId === userId).take(1).result).map { u =>
-      u.headOption match {
-        case Some(uRow) => User.apply(uRow)
-        case None => throw ResourceNotFoundException(s"No user found with id $userId")
+
+    val f = for {
+      userInfoOption <- dbAgent.run(Coalition.UsersView.filter(_.userId === userId).take(1).result).map(_.headOption)
+      userInfo <- userInfoOption match {
+        case Some(uRow) => Future(uRow)
+        case None => Future.failed(throw ResourceNotFoundException(s"No user found with id $userId"))
       }
-    }
+      userPermissions <- permissionController
+        .calculateBinPermission(EveUserData.apply(userInfo))
+        .map(permissionController.getAclPermissions)
+      res <- Future(User.apply(userInfo, userPermissions))
+    } yield res
 
     f.onComplete {
       case Success(res) =>
@@ -156,12 +182,14 @@ class UserController(permissionController: => PermissionController,
   }
 
   def getUserMini(userId: Int): Future[UserMini] = {
-    val f = dbAgent.run(Coalition.Users.filter(_.id === userId).take(1).result).map { u =>
-      u.headOption match {
-        case Some(uRow) => UserMini.apply(uRow)
-        case None => throw ResourceNotFoundException(s"No user found with id $userId")
+    val f = for {
+      userInfo <- dbAgent.run(Coalition.Users.filter(_.id === userId).take(1).result)
+      userPermissions <- permissionController.calculateAclPermissionsByUserId(userId)
+      res <- userInfo.headOption match {
+        case Some(uRow) => Future(UserMini.apply(uRow, userPermissions))
+        case None => Future.failed(ResourceNotFoundException(s"No user found with id $userId"))
       }
-    }
+    } yield res
 
     f.onComplete {
       case Success(res) =>

@@ -5,7 +5,7 @@ WORKDIR /red
 
 COPY ./target/scala-2.12/ceres.jar ceres.jar
 
-ADD cerberus.sv.conf /etc/supervisor/conf.d/
+ADD ceres.sv.conf /etc/supervisor/conf.d/
 
 RUN apk update
 RUN apk add supervisor

@@ -2,6 +2,7 @@ package org.red.ceres.util
 
 
 import moe.pizza.eveapi.ApiKey
+import org.red.iris.PermissionBit
 
 
 sealed trait CeresCredentials
@@ -14,4 +15,12 @@ case class CeresSSOCredentials(refreshToken: String, accessToken: Option[String]
 
 case class SSOAuthCode(code: String)
 
-case class PermissionBitEntry(name: String, bit_position: Int, description: String)
+case class PermissionBitEntry(name: String, bit_position: Int, description: String) {
+  def toPermissionBit: PermissionBit = {
+    PermissionBit(
+      name = name,
+      bitPosition = bit_position,
+      description = description
+    )
+  }
+}

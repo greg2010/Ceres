@@ -11,12 +11,12 @@ import scala.language.postfixOps
 
 
 package object ceres {
-  private val conf: Config = ConfigFactory.load()
-  val ceresConfig: Config = conf.getConfig("ceres")
+  val config: Config = ConfigFactory.load()
+  val ceresConfig: Config = config.getConfig("ceres")
 
   object Implicits {
     implicit val timeout: Timeout = Timeout(2 seconds)
-    implicit val dbAgent: JdbcBackend.Database = Database.forConfig("postgres", conf)
+    implicit val dbAgent: JdbcBackend.Database = Database.forConfig("postgres", config)
   }
 
 }
