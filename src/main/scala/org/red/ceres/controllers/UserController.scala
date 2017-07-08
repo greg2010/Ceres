@@ -312,6 +312,7 @@ class UserController(permissionController: => PermissionController,
         case (Some(usersRow), Some(passwordResetRequestsRow)) =>
           val difference = (System.currentTimeMillis() - passwordResetRequestsRow.timeCreated.getTime).millis
           if (difference < 15.minutes)
+            // TODO: add thrift exception IllegalStateException
             Future.failed(new IllegalStateException("This user has already requested password reset"))
           else insertAndSendToken(usersRow, Some(passwordResetRequestsRow.id))
         case (None, _) => Future.failed(ResourceNotFoundException(s"No user with email $email exists"))
