@@ -4,6 +4,8 @@ package org.red.ceres.util
 import moe.pizza.eveapi.ApiKey
 import org.red.iris.PermissionBit
 
+import scala.language.implicitConversions
+
 
 sealed trait CeresCredentials
 

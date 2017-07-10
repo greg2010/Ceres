@@ -14,6 +14,7 @@ import org.red.ceres.util._
 import org.red.db.models.Coalition
 import org.red.db.models.Coalition.{PasswordResetRequestsRow, UsersRow, UsersViewRow}
 import org.red.iris._
+import org.red.iris.finagle.clients.TeamspeakClient
 import slick.dbio.Effect
 import slick.jdbc.JdbcBackend
 import slick.jdbc.PostgresProfile.api._
@@ -40,7 +41,8 @@ trait UserService {
 
 class UserController(permissionController: => PermissionController,
                      emailController: => EmailController,
-                     eveApiClient: => EveApiClient)
+                     eveApiClient: => EveApiClient,
+                     teamspeakClient: => TeamspeakClient)
                     (implicit dbAgent: JdbcBackend.Database, ec: ExecutionContext)
   extends UserService with LazyLogging {
 
@@ -207,9 +209,8 @@ class UserController(permissionController: => PermissionController,
   }
 
   def updateUser(userId: Int): Future[Unit] = {
-    def triggerUpdates(userId: Int): Future[Unit] = {
-      //teamspeakController.syncTeamspeakUser(userId)
-      Future {}
+    def triggerUpdates(user: User): Future[Unit] = {
+      teamspeakClient.syncTeamspeakUser(user)
     }
 
     val q = Coalition.Users.filter(_.id === userId).map(_.characterId)
@@ -222,7 +223,8 @@ class UserController(permissionController: => PermissionController,
     val r = for {
       data <- userData
       _ <- updateEveData(data)
-      res <- triggerUpdates(userId)
+      user <- getUser(userId)
+      res <- triggerUpdates(user)
     } yield res
     r.onComplete {
       case Success(_) =>
