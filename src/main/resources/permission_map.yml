@@ -33,6 +33,9 @@ permission_map:
   - name: "im_titan"
     bit_position: 18
     description: "NULL"
+  - name: "im_support"
+    bit_position: 19
+    description: "Support group"
   - name: "voice_access"
     bit_position: 20
     description: "Allows to register in coalition TS. 0 - no access, 1 - access granted"

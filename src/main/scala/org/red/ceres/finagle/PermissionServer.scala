@@ -16,4 +16,8 @@ class PermissionServer(permissionController: => PermissionController)
   override def getPermissionMask(permissionList: Seq[PermissionBit]): TFuture[Long] = {
     TFuture(permissionController.getBinPermissions(permissionList.map(_.toPermissionBitEntry)))
   }
+
+  override def getPermissionList: TFuture[Seq[PermissionBit]] = {
+    TFuture(permissionController.permissionMap.map(_.toPermissionBit))
+  }
 }
