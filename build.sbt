@@ -38,6 +38,7 @@ libraryDependencies ++= Seq(
   "org.typelevel" %% "cats" % "0.9.0",
   "com.typesafe" % "config" % "1.3.1",
   "ch.qos.logback" % "logback-classic" % "1.1.7",
+  "com.github.pukkaone" % "logback-gelf" % "1.1.10",
   "com.typesafe.scala-logging" %% "scala-logging" % "3.5.0",
   "com.roundeights" %% "hasher" % "1.2.0",
   "org.scalaj" %% "scalaj-http" % "2.3.0",
