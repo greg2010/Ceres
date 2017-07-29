@@ -15,7 +15,7 @@ package object db {
         name = usersRow.name,
         id = usersRow.id,
         characterId = usersRow.characterId,
-        userPermissions = permissions.map(_.toPermissionBit)
+        permissions = permissions.map(_.toPermissionBit)
       )
     }
   }
@@ -42,14 +42,11 @@ package object db {
       User(
         eveUserData = eveUserData,
         userId = usersViewRow.userId.get,
-        email = usersViewRow.email.get,
-        password = usersViewRow.password,
-        salt = usersViewRow.salt,
+        email = usersViewRow.email,
         isBanned = usersViewRow.banned.get,
-        creationTime = usersViewRow.creationTime.get.toString,
         lastLoggedIn = usersViewRow.lastLoggedIn.toString,
         languageCode = usersViewRow.languageCode.get,
-        userPermissions = permissions.map(_.toPermissionBit)
+        permissions = permissions.map(_.toPermissionBit)
       )
     }
   }

@@ -26,16 +26,16 @@ import scala.util.{Failure, Random, Success}
 
 
 trait UserService {
-  def createUser(email: String, password: Option[String], credentials: CeresCredentials): Future[UserMini]
+  /*def createUser(email: String, password: Option[String], credentials: CeresCredentials): Future[UserMini]
   def verifyUser(nameOrEmail: String, Password: String): Future[UserMini]
-  def verifyUser(ssoToken: String): Future[UserMini]
+  def verifyUser(ssoToken: String): Future[UserMini]*/
   def getUser(userId: Int): Future[User]
   def getUserMini(userId: Int): Future[UserMini]
   def updateUser(userId: Int): Future[Unit]
   def updateEveData(eveUserData: EveUserData): Future[Unit]
-  def updatePassword(userId: Int, newPassword: String): Future[Unit]
+  /*def updatePassword(userId: Int, newPassword: String): Future[Unit]
   def requestPasswordReset(email: String): Future[MessageResponse]
-  def completePasswordReset(email: String, token: String, newPassword: String): Future[Unit]
+  def completePasswordReset(email: String, token: String, newPassword: String): Future[Unit]*/
 }
 
 
@@ -51,7 +51,7 @@ class UserController(permissionController: => PermissionController,
   private def hasher(password: String, salt: String): String = {
     (password + salt).sha512.hex
   }
-
+/*
   override def createUser(email: String,
                           password: Option[String],
                           credentials: CeresCredentials): Future[UserMini] = {
@@ -100,8 +100,8 @@ class UserController(permissionController: => PermissionController,
       f
     }
   }
-
-
+*/
+/*
   override def verifyUser(nameOrEmail: String, providedPassword: String): Future[UserMini] = {
     val query = Coalition.UsersView
       .filter(u => u.email === nameOrEmail || u.characterName === nameOrEmail)
@@ -152,7 +152,7 @@ class UserController(permissionController: => PermissionController,
 
   // TODO: implement SSO login flow
   override def verifyUser(ssoToken: String): Future[UserMini] = ???
-
+*/
 
   def getUser(userId: Int): Future[User] = {
 
@@ -256,7 +256,7 @@ class UserController(permissionController: => PermissionController,
     res
   }
 
-
+/*
   def updatePassword(userId: Int, newPassword: String): Future[Unit] = {
     val salt = generateSalt
     val hashedPwd = hasher(newPassword, salt)
@@ -369,7 +369,7 @@ class UserController(permissionController: => PermissionController,
     }
     f.map(_ => ())
   }
-
+*/
   /* dead? TODO: figure out what to do with the function
   def checkInUser(userId: Int): Future[Unit] = {
     val currentTimestamp = Some(new Timestamp(System.currentTimeMillis()))

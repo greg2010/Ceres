@@ -49,7 +49,8 @@ class EmailController(config: Config, userController: => UserController)(implici
   def sendPasswordResetEmail(userId: Int, token: String): Future[MessageResponse] = {
     val f = userController.getUser(userId).flatMap { res =>
       implicit val lang: Lang = Lang(res.languageCode)
-      val dest = EmailAddress(res.email, res.eveUserData.characterName)
+      // TODO: write proper match on email
+      val dest = EmailAddress(res.email.get, res.eveUserData.characterName)
       val subject = Messages("email.reset.subject", config.getString("mailer.defaultSenderAlias"))
       val link = "https://" + config.getString("mailer.defaultResetDomain") + "/" + token
       val body = Messages("email.reset.body", res.eveUserData.characterName, config.getString("mailer.defaultSenderAlias"), link)
@@ -68,7 +69,8 @@ class EmailController(config: Config, userController: => UserController)(implici
   def sendPasswordChangeEmail(userId: Int): Future[MessageResponse] = {
     val f = userController.getUser(userId).flatMap { res =>
       implicit val lang: Lang = Lang(res.languageCode)
-      val dest = EmailAddress(res.email, res.eveUserData.characterName)
+      // TODO: write proper match on email
+      val dest = EmailAddress(res.email.get, res.eveUserData.characterName)
       val subject = Messages("email.passwordChange.subject", config.getString("mailer.defaultSenderAlias"))
       val body = Messages("email.passwordChange.body", res.eveUserData.characterName, config.getString("mailer.defaultSenderAlias"))
       this.send("change")(dest, subject, body)
