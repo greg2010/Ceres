@@ -2,14 +2,14 @@ package org.red.ceres.util.converters
 
 import org.red.ceres.util.PermissionBitEntry
 import org.red.db.models.Coalition
-import org.red.db.models.Coalition.UsersViewRow
+import org.red.db.models.Coalition.EveUserViewRow
 import org.red.iris.{EveUserData, User, UserMini}
 
 import scala.language.implicitConversions
 
 package object db {
 
-  implicit class RichUserMini(val userMini: UserMini.type) extends AnyVal {
+  /*implicit class RichUserMini(val userMini: UserMini.type) extends AnyVal {
     implicit def apply(usersRow: Coalition.UsersRow, permissions: Seq[PermissionBitEntry]): UserMini = {
       UserMini (
         name = usersRow.name,
@@ -18,10 +18,10 @@ package object db {
         permissions = permissions.map(_.toPermissionBit)
       )
     }
-  }
+  }*/
 
   implicit class RichEveUserData(val eveUserData: EveUserData.type ) extends AnyVal {
-    implicit def apply(usersViewRow: UsersViewRow): EveUserData = {
+    implicit def apply(usersViewRow: EveUserViewRow): EveUserData = {
       EveUserData(
         characterId = usersViewRow.characterId.get,
         characterName = usersViewRow.characterName.get,
@@ -31,22 +31,6 @@ package object db {
         allianceId = usersViewRow.allianceId,
         allianceName = usersViewRow.allianceName,
         allianceTicker = usersViewRow.allianceTicker
-      )
-    }
-  }
-
-  implicit class RichUser(val user: User.type) extends AnyVal {
-    implicit def apply(usersViewRow: Coalition.UsersViewRow, permissions: Seq[PermissionBitEntry]): User = {
-      // TODO: raise postgres exception on failed get
-      val eveUserData = EveUserData.apply(usersViewRow)
-      User(
-        eveUserData = eveUserData,
-        userId = usersViewRow.userId.get,
-        email = usersViewRow.email,
-        isBanned = usersViewRow.banned.get,
-        lastLoggedIn = usersViewRow.lastLoggedIn.toString,
-        languageCode = usersViewRow.languageCode.get,
-        permissions = permissions.map(_.toPermissionBit)
       )
     }
   }

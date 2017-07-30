@@ -10,7 +10,7 @@ import scala.concurrent.ExecutionContext
 class PermissionServer(permissionController: => PermissionController)
                       (implicit ec: ExecutionContext) extends PermissionService[TFuture] {
   override def getPermissionBits(mask: Long): TFuture[Seq[PermissionBit]] = {
-    TFuture(permissionController.getAclPermissions(mask).map(_.toPermissionBit))
+    TFuture(permissionController.getAclPermissions(mask))
   }
 
   override def getPermissionMask(permissionList: Seq[PermissionBit]): TFuture[Long] = {

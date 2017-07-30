@@ -16,11 +16,11 @@ object ApplicationMain extends App with LazyLogging {
 
   lazy val teamspeakClient = new TeamspeakClient(config)
 
-  lazy val emailController: EmailController = new EmailController(ceresConfig, userController)
+  //lazy val emailController: EmailController = new EmailController(ceresConfig, userController)
 
   lazy val eveApiClient: EveApiClient = new EveApiClient(ceresConfig)
   lazy val permissionController: PermissionController = new PermissionController(userController)
-  lazy val userController: UserController = new UserController(permissionController, emailController, eveApiClient, teamspeakClient)
+  lazy val userController: UserController = new UserController(permissionController, eveApiClient, teamspeakClient)
 
   lazy val scheduleController = new ScheduleController(ceresConfig, userController)
 

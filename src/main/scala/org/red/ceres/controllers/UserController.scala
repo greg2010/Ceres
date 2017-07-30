@@ -3,6 +3,8 @@ package org.red.ceres.controllers
 import java.sql.Timestamp
 import java.util.UUID
 
+import cats.data.NonEmptyList
+
 import scala.languageFeature.implicitConversions
 import com.roundeights.hasher.Implicits._
 import org.red.ceres.util.converters.db._
@@ -10,9 +12,10 @@ import com.typesafe.scalalogging.LazyLogging
 import org.matthicks.mailgun.MessageResponse
 import org.red.ceres.exceptions._
 import org.red.ceres.external.auth._
+import org.red.ceres.finagle.SuccessfulLoginResponse
 import org.red.ceres.util._
 import org.red.db.models.Coalition
-import org.red.db.models.Coalition.{PasswordResetRequestsRow, UsersRow, UsersViewRow}
+import org.red.db.models.Coalition._
 import org.red.iris._
 import org.red.iris.finagle.clients.TeamspeakClient
 import slick.dbio.Effect
@@ -29,6 +32,8 @@ trait UserService {
   /*def createUser(email: String, password: Option[String], credentials: CeresCredentials): Future[UserMini]
   def verifyUser(nameOrEmail: String, Password: String): Future[UserMini]
   def verifyUser(ssoToken: String): Future[UserMini]*/
+  def getOwnedCharacters(userId: Int): Future[NonEmptyList[EveUserData]]
+  def loginSSO(authToken: String): Future[SuccessfulLoginResponse]
   def getUser(userId: Int): Future[User]
   def getUserMini(userId: Int): Future[UserMini]
   def updateUser(userId: Int): Future[Unit]
@@ -40,67 +45,92 @@ trait UserService {
 
 
 class UserController(permissionController: => PermissionController,
-                     emailController: => EmailController,
                      eveApiClient: => EveApiClient,
                      teamspeakClient: => TeamspeakClient)
                     (implicit dbAgent: JdbcBackend.Database, ec: ExecutionContext)
   extends UserService with LazyLogging {
 
-  private val rsg: Stream[Char] = Random.alphanumeric
-
-  private def hasher(password: String, salt: String): String = {
-    (password + salt).sha512.hex
-  }
-/*
-  override def createUser(email: String,
-                          password: Option[String],
-                          credentials: CeresCredentials): Future[UserMini] = {
-    val currentTimestamp = new Timestamp(System.currentTimeMillis())
-    // Prepares `coalition.users` table insert query
-    def insertToUsersQuery(eveUserData: EveUserData): FixedSqlAction[Int, NoStream, Effect.Write] = {
-      val passwordWithSalt = password match {
-        case Some(pwd) =>
-          val s = generateSalt
-          (Some(hasher(pwd, s)), Some(s))
-        case None => (None, None)
+  def getOwnedCharacters(userId: Int): Future[NonEmptyList[EveUserData]] = {
+    val q = EveApi.filter(_.ownedBy === userId).join(EveUserView)
+      .on((api, view) => api.characterId === view.characterId)
+    val f = dbAgent.run(q.result).map { resp =>
+      val userData = resp.map { ownedCharacterRow =>
+        EveUserData.apply(ownedCharacterRow._2)
       }
-      Coalition.Users
-        .map(u => (u.characterId, u.name, u.email, u.password, u.salt))
-        .returning(Coalition.Users.map(_.id)) +=
-        (eveUserData.characterId, eveUserData.characterName, email, passwordWithSalt._1, passwordWithSalt._2)
-    }
-
-    // Prepares `coalition.eve_api` table insert query
-    def credsQuery(userId: Int, eveUserData: EveUserData) = credentials match {
-      case legacy: CeresLegacyCredentials =>
-        Coalition.EveApi.map(c => (c.userId, c.characterId, c.keyId, c.verificationCode)) +=
-          (userId, eveUserData.characterId, Some(legacy.apiKey.keyId), Some(legacy.apiKey.vCode))
-      case sso: CeresSSOCredentials => Coalition.EveApi.map(_.evessoRefreshToken) += Some(sso.refreshToken)
-    }
-
-    // Queries eve XML/ESI API to confirm that user indeed owns the account
-    eveApiClient.fetchUser(credentials).flatMap { eveUserData =>
-      val action = (for {
-        _ <- updateUserDataQuery(eveUserData.head)
-        userId <- insertToUsersQuery(eveUserData.head)
-        _ <- credsQuery(userId, eveUserData.head)
-      } yield userId).transactionally
-      val f = dbAgent.run(action)
-        .flatMap(getUserMini)
-        .recoverWith(ExceptionHandlers.dbExceptionHandler)
-      f.onComplete {
-        case Success(res) =>
-          logger.info(s"Created new user " +
-            s"userId=$res " +
-            s"event=users.create.success")
-        case Failure(ex) =>
-          logger.error(s"Failed to create new user " +
-            s"event=users.create.failure", ex)
+      NonEmptyList.fromList(userData.toList) match {
+        case Some(nonEmptyList) => nonEmptyList
+        case None => throw ResourceNotFoundException(s"User $userId doesn't own any characters")
       }
-      f
     }
+    f.onComplete {
+      case Success(resp) =>
+        logger.info(s"Got owned characters for " +
+          s"userId=$userId " +
+          s"characterIds=${resp.toList.mkString(",")} " +
+          s"event=user.owned.get.success")
+      case Failure(ex) =>
+        logger.info(s"Failed to get owned characters for " +
+          s"userId=$userId " +
+          s"event=user.owned.get.failure", ex)
+    }
+    f
   }
-*/
+
+  /*
+    private val rsg: Stream[Char] = Random.alphanumeric
+
+    private def hasher(password: String, salt: String): String = {
+      (password + salt).sha512.hex
+    }
+    override def createUser(email: String,
+                            password: Option[String],
+                            credentials: CeresCredentials): Future[UserMini] = {
+      val currentTimestamp = new Timestamp(System.currentTimeMillis())
+      // Prepares `coalition.users` table insert query
+      def insertToUsersQuery(eveUserData: EveUserData): FixedSqlAction[Int, NoStream, Effect.Write] = {
+        val passwordWithSalt = password match {
+          case Some(pwd) =>
+            val s = generateSalt
+            (Some(hasher(pwd, s)), Some(s))
+          case None => (None, None)
+        }
+        Coalition.Users
+          .map(u => (u.characterId, u.name, u.email, u.password, u.salt))
+          .returning(Coalition.Users.map(_.id)) +=
+          (eveUserData.characterId, eveUserData.characterName, email, passwordWithSalt._1, passwordWithSalt._2)
+      }
+
+      // Prepares `coalition.eve_api` table insert query
+      def credsQuery(userId: Int, eveUserData: EveUserData) = credentials match {
+        case legacy: CeresLegacyCredentials =>
+          Coalition.EveApi.map(c => (c.userId, c.characterId, c.keyId, c.verificationCode)) +=
+            (userId, eveUserData.characterId, Some(legacy.apiKey.keyId), Some(legacy.apiKey.vCode))
+        case sso: CeresSSOCredentials => Coalition.EveApi.map(_.evessoRefreshToken) += Some(sso.refreshToken)
+      }
+
+      // Queries eve XML/ESI API to confirm that user indeed owns the account
+      eveApiClient.fetchUser(credentials).flatMap { eveUserData =>
+        val action = (for {
+          _ <- updateUserDataQuery(eveUserData.head)
+          userId <- insertToUsersQuery(eveUserData.head)
+          _ <- credsQuery(userId, eveUserData.head)
+        } yield userId).transactionally
+        val f = dbAgent.run(action)
+          .flatMap(getUserMini)
+          .recoverWith(ExceptionHandlers.dbExceptionHandler)
+        f.onComplete {
+          case Success(res) =>
+            logger.info(s"Created new user " +
+              s"userId=$res " +
+              s"event=users.create.success")
+          case Failure(ex) =>
+            logger.error(s"Failed to create new user " +
+              s"event=users.create.failure", ex)
+        }
+        f
+      }
+    }
+  */
 /*
   override def verifyUser(nameOrEmail: String, providedPassword: String): Future[UserMini] = {
     val query = Coalition.UsersView
@@ -149,31 +179,59 @@ class UserController(permissionController: => PermissionController,
     }
     f
   }
-
-  // TODO: implement SSO login flow
-  override def verifyUser(ssoToken: String): Future[UserMini] = ???
 */
+
+  def getUserByCharacterId(characterId: Long): Future[User] = {
+    val q = EveApi.filter(_.characterId === characterId).map(_.ownedBy)
+    val f = dbAgent.run(q.result).flatMap { resp =>
+      resp.headOption match {
+        case Some(userId) => this.getUser(userId)
+        case None => Future.failed(ResourceNotFoundException(s"No user owns characterId $characterId"))
+      }
+    }
+    f.onComplete {
+      case Success(resp) =>
+        logger.info(s"Got user by " +
+          s"characterId=$characterId " +
+          s"userId=${resp.userId} " +
+          s"event=user.full.byCharacterId.get.success")
+      case Failure(ex: ResourceNotFoundException) =>
+        logger.warn(s"No user owns user with characterId=$characterId " +
+          s"event=user.full.byCharacterId.get.failure")
+      case Failure(ex) =>
+        logger.error(s"Failed to get user by characterId=$characterId " +
+          s"event=user.full.byCharacterId.get.failure")
+    }
+    f
+  }
 
   def getUser(userId: Int): Future[User] = {
 
     val f = for {
-      userInfoOption <- dbAgent.run(Coalition.UsersView.filter(_.userId === userId).take(1).result).map(_.headOption)
-      userInfo <- userInfoOption match {
-        case Some(uRow) => Future(uRow)
-        case None => Future.failed(throw ResourceNotFoundException(s"No user found with id $userId"))
+      user <- dbAgent.run(Coalition.Users.filter(_.id === userId).take(1).result).map { resp =>
+        resp.headOption match {
+          case Some(user) => user
+          case None => throw ResourceNotFoundException(s"User with userId $userId doesn't exist")
+        }
       }
-      userPermissions <- permissionController
-        .calculateBinPermission(EveUserData.apply(userInfo))
-        .map(permissionController.getAclPermissions)
-      res <- Future(User.apply(userInfo, userPermissions))
+      ownedCharacters <- this.getOwnedCharacters(userId)
+      permissions <- permissionController.getPermissions(userId)
+      res <- Future {
+        User(
+          userId = userId,
+          isBanned = user.banned,
+          lastLoggedIn = user.lastLoggedIn.map(_.toString),
+          languageCode = user.languageCode,
+          permissions = permissions,
+          eveUserDataList = EveUserDataList(head = ownedCharacters.head, tail = ownedCharacters.tail)
+        )
+      }
     } yield res
 
     f.onComplete {
       case Success(res) =>
         logger.info(s"Got user object by " +
           s"userId=$userId " +
-          s"characterName=${res.eveUserData.characterName} " +
-          s"characterId=${res.eveUserData.characterId} " +
           s"event=user.full.getById.success")
       case Failure(ex) =>
         logger.error("Failed to get user object by " +
@@ -184,21 +242,11 @@ class UserController(permissionController: => PermissionController,
   }
 
   def getUserMini(userId: Int): Future[UserMini] = {
-    val f = for {
-      userInfo <- dbAgent.run(Coalition.Users.filter(_.id === userId).take(1).result)
-      userPermissions <- permissionController.calculateAclPermissionsByUserId(userId)
-      res <- userInfo.headOption match {
-        case Some(uRow) => Future(UserMini.apply(uRow, userPermissions))
-        case None => Future.failed(ResourceNotFoundException(s"No user found with id $userId"))
-      }
-    } yield res
-
+    val f = permissionController.getPermissions(userId).map(p => UserMini(userId, p))
     f.onComplete {
       case Success(res) =>
         logger.info(s"Got user object by " +
           s"userId=$userId " +
-          s"characterName=${res.name} " +
-          s"characterId=${res.characterId} " +
           s"event=user.mini.getById.success")
       case Failure(ex) =>
         logger.error("Failed to get user object by " +
@@ -213,17 +261,8 @@ class UserController(permissionController: => PermissionController,
       teamspeakClient.syncTeamspeakUser(user)
     }
 
-    val q = Coalition.Users.filter(_.id === userId).map(_.characterId)
-    val userData = dbAgent.run(q.result).flatMap { r =>
-      r.headOption match {
-        case Some(chId) => eveApiClient.fetchUserByCharacterId(chId)
-        case None => throw ResourceNotFoundException(s"User with id $userId doesn't exist")
-      }
-    }
     val r = for {
-      data <- userData
-      _ <- updateEveData(data)
-      user <- getUser(userId)
+      user <- this.getUser(userId)
       res <- triggerUpdates(user)
     } yield res
     r.onComplete {
@@ -255,6 +294,55 @@ class UserController(permissionController: => PermissionController,
     }
     res
   }
+
+  override def loginSSO(authToken: String): Future[SuccessfulLoginResponse] = {
+    def createUserRowQuery = Users.map(_ => ()).returning(Users.map(_.id)) += ()
+    def insertEveSSORowQuery(userId: Int, characterId: Long, accessToken: String, refreshToken: String) = {
+      EveApi.map(r => (r.ownedBy, r.characterId, r.evessoAccessToken, r.evessoRefreshToken)) +=
+        (userId, characterId, accessToken, refreshToken)
+    }
+
+    val f = for {
+      credential <- eveApiClient.exchangeAuthCode(authToken)
+      eveUserData <- eveApiClient.fetchUser(credential).map(_.head)
+      user <- this.getUserByCharacterId(eveUserData.characterId)
+        .recoverWith {
+          case ex: ResourceNotFoundException =>
+            logger.warn(s"No account exists for " +
+              s"characterId=${eveUserData.characterId} " +
+              s"event=user.login.create")
+            for {
+              _ <- this.updateEveData(eveUserData)
+              userId <- dbAgent.run(createUserRowQuery)
+              _ <- dbAgent.run(
+                insertEveSSORowQuery(userId, eveUserData.characterId, credential.accessToken, credential.refreshToken))
+              _ <- this.updateEveData(eveUserData)
+              user <- this.getUser(userId)
+            } yield user
+        }
+      response <- Future {
+        SuccessfulLoginResponse(
+          user = user,
+          currentUser = eveUserData.characterId
+        )
+      }
+    } yield response
+
+    // Trigger user update asynchronously
+    f.flatMap(u => this.updateUser(u.user.userId))
+    f.onComplete {
+      case Success(res) =>
+        logger.info(s"User logged in succesfully " +
+          s"userId=${res.user.userId} " +
+          s"characterId=${res.currentUser} " +
+          s"event=user.login.success")
+      case Failure(ex) =>
+        logger.error("Failed to log in user event=user.login.failure", ex)
+    }
+
+    f
+  }
+
 
 /*
   def updatePassword(userId: Int, newPassword: String): Future[Unit] = {
@@ -429,8 +517,10 @@ class UserController(permissionController: => PermissionController,
     } yield ()).transactionally
   }
 
+  /*
   private def deletePasswordResetRequestQuery(id: Int): FixedSqlAction[Int, NoStream, Effect.Write] =
     Coalition.PasswordResetRequests.filter(_.id === id).delete
 
   def generateSalt: String = rsg.take(4).mkString
+  */
 }

@@ -9,43 +9,37 @@ import org.red.iris.EveUserData
 import scala.concurrent.{ExecutionContext, Future}
 
 
-class EveApiClient(config: Config)(implicit ec: ExecutionContext) extends LazyLogging {
+trait EveApiClientService {
+  def exchangeAuthCode(authCode: String): Future[CeresSSOCredential]
+  def refreshAccessToken(refreshToken: String): Future[String]
+  def fetchUser(ceresCredentials: CeresCredential): Future[NonEmptyList[EveUserData]]
+  def fetchUser(characterId: Long): Future[EveUserData]
+}
+
+class EveApiClient(config: Config)(implicit ec: ExecutionContext) extends EveApiClientService with LazyLogging {
   private val publicDataClient = new PublicDataClient
   private val legacyClient = new LegacyClient(config, publicDataClient)
   private val ssoClient = new SSOClient(config, publicDataClient)
 
 
-  def fetchUserByCharacterId(characterId: Long): Future[EveUserData] = {
+  def fetchUser(characterId: Long): Future[EveUserData] = {
     publicDataClient.fetchUserByCharacterId(characterId)
   }
 
-  def fetchUser(credentials: CeresCredentials): Future[NonEmptyList[EveUserData]] = {
+
+  def fetchUser(credentials: CeresCredential): Future[NonEmptyList[EveUserData]] = {
     credentials match {
-      case legacyCredentials: CeresLegacyCredentials => legacyClient.fetchUser(legacyCredentials)
-      case ssoCredentials: CeresSSOCredentials => ssoClient.fetchUser(ssoCredentials)
+      case legacyCredentials: CeresLegacyCredential => legacyClient.fetchUser(legacyCredentials)
+      case ssoCredentials: CeresSSOCredential => ssoClient.fetchUser(ssoCredentials)
         .map(x => NonEmptyList(x, List()))
     }
   }
 
-  def fetchCredentials(ssoAuthCode: SSOAuthCode): Future[CeresSSOCredentials] = {
-    ssoClient.fetchSSOCredential(ssoAuthCode)
+  def exchangeAuthCode(authCode: String): Future[CeresSSOCredential] = {
+    ssoClient.fetchSSOCredential(authCode)
   }
 
-  def fetchCredentials(refreshToken: String): Future[CeresSSOCredentials] = {
-    ssoClient.createSSOCredential(refreshToken)
-  }
-
-  def fetchUserAndCredentials(ssoAuthCode: SSOAuthCode): Future[(CeresSSOCredentials, EveUserData)] = {
-    for {
-      creds <- this.fetchCredentials(ssoAuthCode)
-      data <- ssoClient.fetchUser(creds)
-    } yield (creds, data)
-  }
-
-  def fetchUserAndCredentials(refreshToken: String): Future[(CeresSSOCredentials, EveUserData)] = {
-    for {
-      creds <- this.fetchCredentials(refreshToken)
-      data <- ssoClient.fetchUser(creds)
-    } yield (creds, data)
+  def refreshAccessToken(refreshToken: String): Future[String] = {
+    ssoClient.refreshAccessToken(refreshToken)
   }
 }

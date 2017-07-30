@@ -1,12 +1,14 @@
 package org.red.ceres.controllers
 
 
+import com.gilt.gfc.concurrent.ScalaFutures
 import com.typesafe.scalalogging.LazyLogging
 import io.circe.generic.auto._
 import org.red.ceres.util.PermissionBitEntry
 import org.red.db.models.Coalition
 import org.red.iris.util.YamlParser
-import org.red.iris.{EveUserData, ResourceNotFoundException}
+import org.red.iris.{EveUserData, PermissionBit, ResourceNotFoundException}
+import com.gilt.gfc.concurrent.ScalaFutures._
 import slick.jdbc.JdbcBackend
 import slick.jdbc.PostgresProfile.api._
 
@@ -33,10 +35,10 @@ class PermissionController(userController: => UserController)(implicit dbAgent: 
     }
   }
 
-  def calculateAclPermissionsByUserId(userId: Int): Future[Seq[PermissionBitEntry]] = {
+  def getPermissions(userId: Int): Future[Seq[PermissionBit]] = {
     for {
-      user <- userController.getUser(userId)
-      permissions <- calculateBinPermission(user.eveUserData).map(getAclPermissions)
+      characters <- userController.getOwnedCharacters(userId)
+      permissions <- calculateBinPermission(characters.toList:_*).map(getAclPermissions)
     } yield permissions
   }
 
@@ -70,12 +72,15 @@ class PermissionController(userController: => UserController)(implicit dbAgent: 
     f
   }
 
-  def calculateBinPermission(eveUserData: EveUserData): Future[Long] = {
-    calculateBinPermission(
-      Some(eveUserData.characterId),
-      Some(eveUserData.corporationId),
-      eveUserData.allianceId
-    )
+  def calculateBinPermission(eveUserData: EveUserData*): Future[Long] = {
+    val permissionList = eveUserData.map { u =>
+      calculateBinPermission(
+        Some(u.characterId),
+        Some(u.corporationId),
+        u.allianceId
+      )
+    }
+    ScalaFutures.foldFast(permissionList)(0)(_ | _)
   }
 
   def getBinPermissions(acl: Seq[PermissionBitEntry]): Long = {
@@ -94,7 +99,7 @@ class PermissionController(userController: => UserController)(implicit dbAgent: 
     res
   }
 
-  def getAclPermissions(aclMask: Long): Seq[PermissionBitEntry] = {
+  def getAclPermissions(aclMask: Long): Seq[PermissionBit] = {
     @tailrec
     def getBitsRec(aclMask: Long, curPosn: Int, soFar: Seq[Int]): Seq[Int] = {
       val mask = 1
@@ -105,7 +110,7 @@ class PermissionController(userController: => UserController)(implicit dbAgent: 
 
     val res = getBitsRec(aclMask, 0, Seq()).map { bit =>
       permissionMap.find(_.bit_position == bit) match {
-        case Some(entry) => entry
+        case Some(entry) => entry.toPermissionBit
         case None => throw new RuntimeException("No permission bit defn found") //FIXME: change exception type
       }
     }

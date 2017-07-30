@@ -7,15 +7,13 @@ import org.red.iris.PermissionBit
 import scala.language.implicitConversions
 
 
-sealed trait CeresCredentials
+sealed trait CeresCredential
 
-case class CeresLegacyCredentials(apiKey: ApiKey,
-                                  characterId: Option[Long],
-                                  name: Option[String]) extends CeresCredentials
+case class CeresLegacyCredential(apiKey: ApiKey,
+                                 characterId: Option[Long],
+                                 name: Option[String]) extends CeresCredential
 
-case class CeresSSOCredentials(refreshToken: String, accessToken: Option[String]) extends CeresCredentials
-
-case class SSOAuthCode(code: String)
+case class CeresSSOCredential(refreshToken: String, accessToken: String) extends CeresCredential
 
 case class PermissionBitEntry(name: String, bit_position: Int, description: String) {
   def toPermissionBit: PermissionBit = {

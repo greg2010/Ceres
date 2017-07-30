@@ -4,7 +4,7 @@ import cats.data.NonEmptyList
 import com.typesafe.config.Config
 import com.typesafe.scalalogging.LazyLogging
 import moe.pizza.eveapi.{ApiKey, EVEAPI}
-import org.red.ceres.util.CeresLegacyCredentials
+import org.red.ceres.util.CeresLegacyCredential
 import org.red.iris.{BadEveCredential, EveUserData, ResourceNotFoundException}
 
 import scala.concurrent.{ExecutionContext, Future}
@@ -15,7 +15,7 @@ private[this] class LegacyClient(config: Config, publicDataClient: PublicDataCli
                                 (implicit ec: ExecutionContext) extends LazyLogging {
   private val minimumMask: Int = config.getInt("legacyAPI.minimumKeyMask")
 
-  def fetchUser(legacyCredentials: CeresLegacyCredentials): Future[NonEmptyList[EveUserData]] = {
+  def fetchUser(legacyCredentials: CeresLegacyCredential): Future[NonEmptyList[EveUserData]] = {
     lazy val client = new EVEAPI()(Some(legacyCredentials.apiKey), ec)
     val f = client.account.APIKeyInfo().flatMap {
       case Success(res) if (res.result.key.accessMask & minimumMask) == minimumMask =>

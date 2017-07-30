@@ -2,7 +2,7 @@ package org.red.ceres.finagle
 
 import moe.pizza.eveapi.ApiKey
 import org.red.ceres.controllers.UserController
-import org.red.ceres.util.{CeresLegacyCredentials, CeresSSOCredentials}
+import org.red.ceres.util.{CeresLegacyCredential, CeresSSOCredential}
 import org.red.iris._
 
 import scala.concurrent.ExecutionContext
@@ -14,7 +14,7 @@ import org.red.ceres.external.auth.EveApiClient
 class UserServer(userController: => UserController, eveApiClient: => EveApiClient)
                 (implicit ec: ExecutionContext) extends UserService[TFuture] {
   override def getEveUser(credentials: LegacyCredentials): TFuture[EveUserDataList] = {
-    val ceresCreds = CeresLegacyCredentials(
+    val ceresCreds = CeresLegacyCredential(
       ApiKey(credentials.keyId, credentials.vCode),
       credentials.characterId,
       credentials.name)
@@ -59,6 +59,11 @@ class UserServer(userController: => UserController, eveApiClient: => EveApiClien
   override def triggerUserUpdate(userId: Int): TFuture[Unit] = {
     userController.updateUser(userId).as[TFuture[Unit]]
   }
+
+  override def loginSSO(authCode: String): TFuture[SuccessfulLoginResponse] = {
+    userController.loginSSO(authCode).as[TFuture[SuccessfulLoginResponse]]
+  }
+
 /*
   override def updateUserData(eveUserData: EveUserData): TFuture[Unit] = {
     userController.updateEveData(eveUserData).as[TFuture[Unit]]
@@ -75,6 +80,4 @@ class UserServer(userController: => UserController, eveApiClient: => EveApiClien
   override def completePasswordReset(email: String, token: String, newPassword: String): TFuture[Unit] = {
     userController.completePasswordReset(email, token, newPassword).as[TFuture[Unit]]
   }*/
-  // TODO: implement
-  override def loginSSO(authCode: String): TFuture[UserMini] = ???
 }

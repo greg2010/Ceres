@@ -21,6 +21,8 @@ trait EmailService {
   def sendPasswordChangeEmail(userId: Int): Future[MessageResponse]
 }
 
+
+/*
 class EmailController(config: Config, userController: => UserController)(implicit ec: ExecutionContext)
   extends EmailService with LazyLogging {
   private val mailer = new Mailgun(config.getString("mailer.domain"), config.getString("mailer.apiKey"))
@@ -108,4 +110,5 @@ class EmailController(config: Config, userController: => UserController)(implici
           s"event=email.send.failure", ex)
     }
   }
-}
+
+}*/

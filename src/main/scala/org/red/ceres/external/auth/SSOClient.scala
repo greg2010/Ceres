@@ -6,8 +6,9 @@ import com.gilt.gfc.concurrent.ScalaFutures.retryWithExponentialDelay
 import com.typesafe.config.Config
 import com.typesafe.scalalogging.LazyLogging
 import io.circe.generic.auto._
+import io.circe.syntax._
 import io.circe.{Decoder, parser}
-import org.red.ceres.util.{CeresSSOCredentials, SSOAuthCode}
+import org.red.ceres.util.CeresSSOCredential
 import org.red.iris.{CCPException, EveUserData}
 
 import scala.concurrent.duration._
@@ -22,9 +23,7 @@ private[this] class SSOClient(config: Config, publicDataClient: PublicDataClient
 
   private def tokenRequest: HttpRequest =
     Http(baseUrl + "/token")
-      .method("POST")
-      .header("User-Agent", userAgent)
-      .header("Content-Type", "application/x-www-form-urlencoded")
+      .header("Content-Type", "application/json")
       .auth(config.getString("SSOClientId"), config.getString("SSOClientSecret"))
 
   private case class VerifyResponse(CharacterID: Long,
@@ -34,10 +33,11 @@ private[this] class SSOClient(config: Config, publicDataClient: PublicDataClient
                                     TokenType: String,
                                     CharacterOwnerHash: String)
 
+  private case class TokenExchangeRequest(grant_type: String, code: String)
 
   private case class TokenResponse(access_token: String,
                                    token_type: String,
-                                   expires_in: String,
+                                   expires_in: Int,
                                    refresh_token: String)
 
   private def parseResponse[T](respCode: Int,
@@ -50,15 +50,17 @@ private[this] class SSOClient(config: Config, publicDataClient: PublicDataClient
           case Left(ex) => throw CCPException("Failed to parse SSO response")
         }
       case x =>
-        throw CCPException(s"Got $x status code on attempt to access SSO API")
+        throw CCPException(s"Got $x status code on attempt to access SSO API, " +
+          s"response was ${scala.io.Source.fromInputStream(is).mkString}")
     }
   }
 
 
   private def executeAsync[T](httpRequest: HttpRequest,
-                              parser: (Int, Map[String, IndexedSeq[String]], InputStream) => T) = {
+                              parser: (Int, Map[String, IndexedSeq[String]], InputStream) => T,
+                              attempts: Int = 3) = {
     retryWithExponentialDelay(
-      maxRetryTimes = 3,
+      maxRetryTimes = attempts,
       initialDelay = 100.millis,
       maxDelay = 100.millis,
       exponentFactor = 1) {
@@ -66,23 +68,20 @@ private[this] class SSOClient(config: Config, publicDataClient: PublicDataClient
     }
   }
 
-  def fetchSSOCredential(SSOAuthCode: SSOAuthCode): Future[CeresSSOCredentials] = {
+  def fetchSSOCredential(authCode: String): Future[CeresSSOCredential] = {
     val q =
-      tokenRequest.postForm(
-        Seq {
-          ("grant_type", "authorization_code")
-          ("code", SSOAuthCode.code)
-        }
-      )
+      tokenRequest.postData(TokenExchangeRequest(grant_type = "authorization_code", code = authCode).asJson.noSpaces)
+      .compress(false)
     this.executeAsync[TokenResponse](
       q,
-      parseResponse[TokenResponse]
+      parseResponse[TokenResponse],
+      attempts = 0 // Cannot retry
     ).map { res =>
-      CeresSSOCredentials(res.refresh_token, Some(res.access_token))
+      CeresSSOCredential(res.refresh_token, res.access_token)
     }
   }
 
-  def createSSOCredential(refreshToken: String): Future[CeresSSOCredentials] = {
+  def refreshAccessToken(refreshToken: String): Future[String] = {
     val q =
       tokenRequest.postForm(
         Seq {
@@ -90,12 +89,11 @@ private[this] class SSOClient(config: Config, publicDataClient: PublicDataClient
           ("refresh_token", refreshToken)
         }
       )
-    this.executeAsync[TokenResponse](q, parseResponse[TokenResponse]).map { res =>
-      CeresSSOCredentials(refreshToken, Some(res.access_token))
-    }
+    this.executeAsync[TokenResponse](q, parseResponse[TokenResponse])
+      .map(_.access_token)
   }
 
-  def fetchUser(credential: CeresSSOCredentials): Future[EveUserData] = {
+  def fetchUser(credential: CeresSSOCredential): Future[EveUserData] = {
     val q =
       Http(baseUrl + "/verify")
         .method("GET")
@@ -103,5 +101,6 @@ private[this] class SSOClient(config: Config, publicDataClient: PublicDataClient
         .header("Authorization", s"Bearer ${credential.accessToken}")
     this.executeAsync[VerifyResponse](q, parseResponse[VerifyResponse])
       .flatMap(r => publicDataClient.fetchUserByCharacterId(r.CharacterID))
+    // TODO: handle expired access token
   }
 }
