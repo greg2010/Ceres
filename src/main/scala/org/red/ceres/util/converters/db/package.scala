@@ -1,24 +1,11 @@
 package org.red.ceres.util.converters
 
-import org.red.ceres.util.PermissionBitEntry
-import org.red.db.models.Coalition
 import org.red.db.models.Coalition.EveUserViewRow
-import org.red.iris.{EveUserData, User, UserMini}
+import org.red.iris.EveUserData
 
 import scala.language.implicitConversions
 
 package object db {
-
-  /*implicit class RichUserMini(val userMini: UserMini.type) extends AnyVal {
-    implicit def apply(usersRow: Coalition.UsersRow, permissions: Seq[PermissionBitEntry]): UserMini = {
-      UserMini (
-        name = usersRow.name,
-        id = usersRow.id,
-        characterId = usersRow.characterId,
-        permissions = permissions.map(_.toPermissionBit)
-      )
-    }
-  }*/
 
   implicit class RichEveUserData(val eveUserData: EveUserData.type ) extends AnyVal {
     implicit def apply(usersViewRow: EveUserViewRow): EveUserData = {

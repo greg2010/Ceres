@@ -205,6 +205,30 @@ class UserController(permissionController: => PermissionController,
     f
   }
 
+  def getUserMiniByCharacterId(characterId: Long): Future[UserMini] = {
+    val q = EveApi.filter(_.characterId === characterId).map(_.ownedBy)
+    val f = dbAgent.run(q.result).flatMap { resp =>
+      resp.headOption match {
+        case Some(userId) => this.getUserMini(userId)
+        case None => Future.failed(ResourceNotFoundException(s"No user owns characterId $characterId"))
+      }
+    }
+    f.onComplete {
+      case Success(resp) =>
+        logger.info(s"Got user by " +
+          s"characterId=$characterId " +
+          s"userId=${resp.id} " +
+          s"event=user.mini.byCharacterId.get.success")
+      case Failure(ex: ResourceNotFoundException) =>
+        logger.warn(s"No user owns user with characterId=$characterId " +
+          s"event=user.mini.byCharacterId.get.failure")
+      case Failure(ex) =>
+        logger.error(s"Failed to get user by characterId=$characterId " +
+          s"event=user.mini.byCharacterId.get.failure")
+    }
+    f
+  }
+
   def getUser(userId: Int): Future[User] = {
 
     val f = for {
@@ -305,7 +329,7 @@ class UserController(permissionController: => PermissionController,
     val f = for {
       credential <- eveApiClient.exchangeAuthCode(authToken)
       eveUserData <- eveApiClient.fetchUser(credential).map(_.head)
-      user <- this.getUserByCharacterId(eveUserData.characterId)
+      userMini <- this.getUserMiniByCharacterId(eveUserData.characterId)
         .recoverWith {
           case ex: ResourceNotFoundException =>
             logger.warn(s"No account exists for " +
@@ -317,23 +341,23 @@ class UserController(permissionController: => PermissionController,
               _ <- dbAgent.run(
                 insertEveSSORowQuery(userId, eveUserData.characterId, credential.accessToken, credential.refreshToken))
               _ <- this.updateEveData(eveUserData)
-              user <- this.getUser(userId)
-            } yield user
+              userMini <- this.getUserMini(userId)
+            } yield userMini
         }
       response <- Future {
         SuccessfulLoginResponse(
-          user = user,
+          userMini = userMini,
           currentUser = eveUserData.characterId
         )
       }
     } yield response
 
     // Trigger user update asynchronously
-    f.flatMap(u => this.updateUser(u.user.userId))
+    f.flatMap(u => this.updateUser(u.userMini.id))
     f.onComplete {
       case Success(res) =>
         logger.info(s"User logged in succesfully " +
-          s"userId=${res.user.userId} " +
+          s"userId=${res.userMini.id} " +
           s"characterId=${res.currentUser} " +
           s"event=user.login.success")
       case Failure(ex) =>
@@ -342,145 +366,6 @@ class UserController(permissionController: => PermissionController,
 
     f
   }
-
-
-/*
-  def updatePassword(userId: Int, newPassword: String): Future[Unit] = {
-    val salt = generateSalt
-    val hashedPwd = hasher(newPassword, salt)
-    val q = Coalition.Users.filter(_.id === userId)
-      .map(r => (r.password, r.salt))
-      .update((Some(hashedPwd), Some(salt)))
-    val f = dbAgent.run(q).map {
-      case 0 => throw ResourceNotFoundException(s"No user with userId $userId exists")
-      case 1 =>
-        emailController.sendPasswordChangeEmail(userId)
-        () // Executing email send async
-      case n if n > 1 => throw new RuntimeException(s"$n users were updated!")
-    }
-
-    f.onComplete {
-      case Success(_) =>
-        logger.info(s"Password for user was updated userId=$userId event=user.password.update.success")
-      case Failure(ex) =>
-        logger.error(s"Failed to update password for user userId=$userId event=user.password.update.failure", ex)
-    }
-    f
-  }
-
-  def requestPasswordReset(email: String): Future[MessageResponse] = {
-    def insertAndSendToken(usersRow: UsersRow, obsoleteRequestId: Option[Int]): Future[(UsersRow, MessageResponse)] = {
-      val deleteObsolete = obsoleteRequestId match {
-        case Some(id) => dbAgent.run(deletePasswordResetRequestQuery(id))
-        case None => Future {
-          0
-        }
-      }
-      val token = hasher(UUID.randomUUID().toString, usersRow.id.toString)
-      val q = Coalition.PasswordResetRequests.map(r => (r.email, r.token, r.timeCreated)) +=
-        (email, token, new Timestamp(System.currentTimeMillis()))
-
-      for {
-        _ <- deleteObsolete
-        sendEmail <- emailController.sendPasswordResetEmail(usersRow.id, token)
-        insertToken <- dbAgent.run(q)
-      } yield (usersRow, sendEmail)
-    }
-
-    val q = Coalition.Users.filter(_.email === email).take(1)
-      .joinLeft(Coalition.PasswordResetRequests).on((u, p) => u.email === p.email)
-    val f = dbAgent.run(q.result).flatMap { r =>
-      val rOpt = r.headOption
-      (rOpt.map(_._1), rOpt.flatMap(_._2)) match {
-        case (Some(usersRow), None) =>
-          logger.info(s"Password reset request for " +
-            s"email=$email " +
-            s"userId=${usersRow.id} " +
-            s"characterId=${usersRow.characterId} " +
-            s"event=user.passwordReset.create")
-          insertAndSendToken(usersRow, None)
-        case (Some(usersRow), Some(passwordResetRequestsRow)) =>
-          val difference = (System.currentTimeMillis() - passwordResetRequestsRow.timeCreated.getTime).millis
-          if (difference < 15.minutes)
-            // TODO: add thrift exception IllegalStateException
-            Future.failed(new IllegalStateException("This user has already requested password reset"))
-          else insertAndSendToken(usersRow, Some(passwordResetRequestsRow.id))
-        case (None, _) => Future.failed(ResourceNotFoundException(s"No user with email $email exists"))
-      }
-    }
-
-    f.onComplete {
-      case Success(res) =>
-        logger.info(s"Successfully created password reset request " +
-          s"userId=${res._1.id} " +
-          s"characterId=${res._1.characterId} " +
-          s"name=${res._1.name} " +
-          s"email=${res._1.email} " +
-          s"mailgunMessageId=${res._2.id} " +
-          s"event=user.passwordReset.create.success")
-      case Failure(ex) =>
-        logger.info(s"Failed create password reset request " +
-          s"email=$email " +
-          s"event=user.passwordReset.create.failure", ex)
-    }
-
-    f.map(r => r._2)
-  }
-
-  def completePasswordReset(email: String, token: String, newPassword: String): Future[Unit] = {
-    def testToken(passwordResetRequestsRow: PasswordResetRequestsRow, userId: Int): Boolean = {
-      val dbHashedToken = hasher(passwordResetRequestsRow.token, userId.toString)
-      val difference = (System.currentTimeMillis() - passwordResetRequestsRow.timeCreated.getTime).millis
-      (dbHashedToken == token) && difference < 15.minutes
-    }
-
-    val q = Coalition.Users.filter(_.email === email)
-      .joinLeft(Coalition.PasswordResetRequests).on((u, p) => u.email === p.email)
-    val f = dbAgent.run(q.result).flatMap { r =>
-      val rOpt = r.headOption
-      (rOpt.map(_._1), rOpt.flatMap(_._2)) match {
-        case (Some(usersRow), Some(passwordResetRequestsRow))
-          if testToken(passwordResetRequestsRow, usersRow.id) =>
-          for {
-            upd <- this.updatePassword(usersRow.id, newPassword)
-            del <- dbAgent.run(deletePasswordResetRequestQuery(passwordResetRequestsRow.id))
-          } yield usersRow
-        case _ =>
-          Future.failed(ResourceNotFoundException("No user found for this email, token expired or token doesn't match"))
-      }
-    }
-    f.onComplete {
-      case Success(res) =>
-        logger.info(s"Completed password reset for user userId=${res.id} email=${res.email} event=user.passwordReset.complete.success")
-      case Failure(ex) =>
-        logger.error(s"Failed to update password for user email=$email event=user.passwordReset.complete.failure", ex)
-    }
-    f.map(_ => ())
-  }
-*/
-  /* dead? TODO: figure out what to do with the function
-  def checkInUser(userId: Int): Future[Unit] = {
-    val currentTimestamp = Some(new Timestamp(System.currentTimeMillis()))
-    val query = Coalition.Users
-      .filter(_.id === userId)
-      .map(_.lastLoggedIn).update(currentTimestamp)
-    val f = dbAgent.run(query).flatMap {
-      case 0 => Future.failed(ResourceNotFoundException("No user was updated!"))
-      case 1 => Future.successful {}
-      case n => Future.failed(new RuntimeException("More than 1 user was updated!"))
-    }.recoverWith(ExceptionHandlers.dbExceptionHandler)
-    f.onComplete {
-      case Success(_) =>
-        logger.info(s"Successfully checked in user asynchronously " +
-          s"userId=$userId " +
-          s"event=users.checkinAsync.success")
-      case Failure(ex) =>
-        logger.error(s"Failed to check in user asynchronously " +
-          s"userId=$userId " +
-          s"event=users.checkinAsync.failure", ex)
-    }
-    f
-  }*/
 
 
   private def updateUserDataQuery(eveUserData: EveUserData): DBIOAction[Unit, NoStream, Effect.Write with Effect.Write with Effect.Write with Effect.Transactional] = {
@@ -516,11 +401,4 @@ class UserController(permissionController: => PermissionController,
       _ <- charQuery
     } yield ()).transactionally
   }
-
-  /*
-  private def deletePasswordResetRequestQuery(id: Int): FixedSqlAction[Int, NoStream, Effect.Write] =
-    Coalition.PasswordResetRequests.filter(_.id === id).delete
-
-  def generateSalt: String = rsg.take(4).mkString
-  */
 }
