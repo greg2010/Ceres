@@ -8,7 +8,6 @@ import org.red.ceres.util.PermissionBitEntry
 import org.red.db.models.Coalition
 import org.red.iris.util.YamlParser
 import org.red.iris.{EveUserData, PermissionBit, ResourceNotFoundException}
-import com.gilt.gfc.concurrent.ScalaFutures._
 import slick.jdbc.JdbcBackend
 import slick.jdbc.PostgresProfile.api._
 

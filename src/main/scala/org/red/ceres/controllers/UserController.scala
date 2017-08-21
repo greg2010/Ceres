@@ -21,26 +21,18 @@ import org.red.iris.finagle.clients.TeamspeakClient
 import slick.dbio.Effect
 import slick.jdbc.JdbcBackend
 import slick.jdbc.PostgresProfile.api._
-import slick.sql.FixedSqlAction
 
-import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
-import scala.util.{Failure, Random, Success}
+import scala.util.{Failure, Success}
 
 
 trait UserService {
-  /*def createUser(email: String, password: Option[String], credentials: CeresCredentials): Future[UserMini]
-  def verifyUser(nameOrEmail: String, Password: String): Future[UserMini]
-  def verifyUser(ssoToken: String): Future[UserMini]*/
   def getOwnedCharacters(userId: Int): Future[NonEmptyList[EveUserData]]
   def loginSSO(authToken: String): Future[SuccessfulLoginResponse]
   def getUser(userId: Int): Future[User]
   def getUserMini(userId: Int): Future[UserMini]
   def updateUser(userId: Int): Future[Unit]
   def updateEveData(eveUserData: EveUserData): Future[Unit]
-  /*def updatePassword(userId: Int, newPassword: String): Future[Unit]
-  def requestPasswordReset(email: String): Future[MessageResponse]
-  def completePasswordReset(email: String, token: String, newPassword: String): Future[Unit]*/
 }
 
 
@@ -75,111 +67,6 @@ class UserController(permissionController: => PermissionController,
     }
     f
   }
-
-  /*
-    private val rsg: Stream[Char] = Random.alphanumeric
-
-    private def hasher(password: String, salt: String): String = {
-      (password + salt).sha512.hex
-    }
-    override def createUser(email: String,
-                            password: Option[String],
-                            credentials: CeresCredentials): Future[UserMini] = {
-      val currentTimestamp = new Timestamp(System.currentTimeMillis())
-      // Prepares `coalition.users` table insert query
-      def insertToUsersQuery(eveUserData: EveUserData): FixedSqlAction[Int, NoStream, Effect.Write] = {
-        val passwordWithSalt = password match {
-          case Some(pwd) =>
-            val s = generateSalt
-            (Some(hasher(pwd, s)), Some(s))
-          case None => (None, None)
-        }
-        Coalition.Users
-          .map(u => (u.characterId, u.name, u.email, u.password, u.salt))
-          .returning(Coalition.Users.map(_.id)) +=
-          (eveUserData.characterId, eveUserData.characterName, email, passwordWithSalt._1, passwordWithSalt._2)
-      }
-
-      // Prepares `coalition.eve_api` table insert query
-      def credsQuery(userId: Int, eveUserData: EveUserData) = credentials match {
-        case legacy: CeresLegacyCredentials =>
-          Coalition.EveApi.map(c => (c.userId, c.characterId, c.keyId, c.verificationCode)) +=
-            (userId, eveUserData.characterId, Some(legacy.apiKey.keyId), Some(legacy.apiKey.vCode))
-        case sso: CeresSSOCredentials => Coalition.EveApi.map(_.evessoRefreshToken) += Some(sso.refreshToken)
-      }
-
-      // Queries eve XML/ESI API to confirm that user indeed owns the account
-      eveApiClient.fetchUser(credentials).flatMap { eveUserData =>
-        val action = (for {
-          _ <- updateUserDataQuery(eveUserData.head)
-          userId <- insertToUsersQuery(eveUserData.head)
-          _ <- credsQuery(userId, eveUserData.head)
-        } yield userId).transactionally
-        val f = dbAgent.run(action)
-          .flatMap(getUserMini)
-          .recoverWith(ExceptionHandlers.dbExceptionHandler)
-        f.onComplete {
-          case Success(res) =>
-            logger.info(s"Created new user " +
-              s"userId=$res " +
-              s"event=users.create.success")
-          case Failure(ex) =>
-            logger.error(s"Failed to create new user " +
-              s"event=users.create.failure", ex)
-        }
-        f
-      }
-    }
-  */
-/*
-  override def verifyUser(nameOrEmail: String, providedPassword: String): Future[UserMini] = {
-    val query = Coalition.UsersView
-      .filter(u => u.email === nameOrEmail || u.characterName === nameOrEmail)
-      .take(1)
-
-    val f = dbAgent.run(query.result).flatMap {
-      _.headOption match {
-        case Some(r) =>
-          permissionController.calculateAclPermissionsByUserId(r.userId.get)
-            .map { perms =>
-              User.apply(r, perms) match {
-                case User(eveUserData, userId, _, Some(password), Some(salt), isBanned, _, _, _, _)
-                  if hasher(providedPassword, salt) == password && !isBanned =>
-                  UserMini(eveUserData.characterName, userId, eveUserData.characterId, perms.map(_.toPermissionBit))
-                case User(eveUserData, userId, _, Some(password), Some(salt), isBanned, _, _, _, _)
-                  if hasher(providedPassword, salt) == password && isBanned =>
-                  logger.warn(s"Banned user attempted to login nameOrLogin=$nameOrEmail reason=banned event=user.login.banned")
-                  throw AuthenticationException("User is banned", "")
-                case User(eveUserData, userId, _, Some(password), Some(salt), isBanned, _, _, _, _)
-                  if hasher(providedPassword, salt) != password =>
-                  logger.warn(s"User failed to login nameOrLogin=$nameOrEmail reason=badPassword event=user.login.failure")
-                  throw AuthenticationException("User with corresponding login and password not found", "")
-                case _ =>
-                  logger.error(s"Unknown error during login nameOrLogin=$nameOrEmail reason=unknown event=user.login.failure")
-                  throw new InternalError("User with corresponding login and password not found")
-              }
-            }
-        case None =>
-          logger.warn(s"User failed to login nameOrLogin=$nameOrEmail reason=badLogin event=user.login.failure")
-          Future.failed(AuthenticationException("User with corresponding login and password not found", ""))
-      }
-
-    }
-    f.onComplete {
-      case Success(res) =>
-        logger.info(s"Logged in user using legacy flow " +
-          s"userId=${res.id} " +
-          s"characterId=${res.characterId} " +
-          s"event=users.login.legacy.success")
-      case Failure(ex: AuthenticationException) =>
-        logger.error(s"Bad login or password for nameOrLogin=$nameOrEmail event=users.login.legacy.failure")
-      case Failure(ex) =>
-        logger.error(s"Failed to log in user using legacy flow " +
-          s"event=users.login.legacy.failure", ex)
-    }
-    f
-  }
-*/
 
   def getUserByCharacterId(characterId: Long): Future[User] = {
     val q = EveApi.filter(_.characterId === characterId).map(_.ownedBy)

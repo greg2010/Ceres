@@ -25,5 +25,9 @@ object ApplicationMain extends App with LazyLogging {
   val userServer = new TUserServer(config).build(new UserServer(userController, eveApiClient))
   val permissionServer = new TPermissionServer(config).build(new PermissionServer(permissionController))
 
+  // WARMUP
+  userController.loginSSO("WARMUP")
+  // WARMUP END
+
   Await.result(userServer)
 }

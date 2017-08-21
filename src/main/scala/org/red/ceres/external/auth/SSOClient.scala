@@ -8,15 +8,21 @@ import com.typesafe.scalalogging.LazyLogging
 import io.circe.generic.auto._
 import io.circe.syntax._
 import io.circe.{Decoder, parser}
-import org.red.ceres.util.CeresSSOCredential
-import org.red.iris.{CCPException, EveUserData}
+import org.red.ceres.util.{CeresSSOCredential, TokenExpiredException}
+import org.red.db.models.Coalition
+import org.red.iris.{BadEveCredential, CCPException, EveUserData}
+import slick.dbio.Effect
+import slick.jdbc.JdbcBackend
+import slick.jdbc.PostgresProfile.api._
+import slick.sql.FixedSqlAction
 
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 import scalaj.http.{Http, HttpRequest}
 
 
-private[this] class SSOClient(config: Config, publicDataClient: PublicDataClient)(implicit ec: ExecutionContext) extends LazyLogging {
+private[this] class SSOClient(config: Config, publicDataClient: PublicDataClient)
+                             (implicit ec: ExecutionContext, dbAgent: JdbcBackend.Database) extends LazyLogging {
   private val defaultDatasource = Some("tranquility")
   private val baseUrl = "https://login.eveonline.com/oauth"
   private val userAgent = "red-ceres/1.0"
@@ -40,25 +46,43 @@ private[this] class SSOClient(config: Config, publicDataClient: PublicDataClient
                                    expires_in: Int,
                                    refresh_token: String)
 
+  private case class ErrorResponse(error: String, sso_status: Int)
+
   private def parseResponse[T](respCode: Int,
                                headers: Map[String, IndexedSeq[String]],
                                is: InputStream)(implicit evidence: Decoder[T]): T = {
+    def handleError(code: Int, er: ErrorResponse): Nothing = {
+      (code, er) match {
+        case (403, ErrorResponse("expired", 400)) => throw new TokenExpiredException
+        case (400, _) => throw BadEveCredential("Bad credential", 1)
+        case _ => throw CCPException("Bad response code and/or response from CCP")
+      }
+    }
+    def handleParseException(ex: Exception): Nothing = {
+      logger.error("Failed to parse SSO response, the response was\n" +
+        s"${scala.io.Source.fromInputStream(is).mkString}\n" +
+        s"event=sso.parse.failed", ex)
+      throw CCPException("Failed to parse SSO response")
+    }
     respCode match {
       case 200 =>
         parser.decode[T](scala.io.Source.fromInputStream(is).mkString) match {
           case Right(res) => res
-          case Left(ex) => throw CCPException("Failed to parse SSO response")
+          case Left(ex) => handleParseException(ex)
         }
+      case 400 => handleError(400, ErrorResponse("_", 400))
       case x =>
-        throw CCPException(s"Got $x status code on attempt to access SSO API, " +
-          s"response was ${scala.io.Source.fromInputStream(is).mkString}")
+        parser.decode[ErrorResponse](scala.io.Source.fromInputStream(is).mkString) match {
+          case Right(er) => handleError(x, er)
+          case Left(ex) => handleParseException(ex)
+        }
     }
   }
 
 
   private def executeAsync[T](httpRequest: HttpRequest,
                               parser: (Int, Map[String, IndexedSeq[String]], InputStream) => T,
-                              attempts: Int = 3) = {
+                              attempts: Int = 3): Future[T] = {
     retryWithExponentialDelay(
       maxRetryTimes = attempts,
       initialDelay = 100.millis,
@@ -94,6 +118,10 @@ private[this] class SSOClient(config: Config, publicDataClient: PublicDataClient
   }
 
   def fetchUser(credential: CeresSSOCredential): Future[EveUserData] = {
+    def updateAccessTokenQuery(newAccessToken: String): FixedSqlAction[Int, NoStream, Effect.Write] = {
+      Coalition.EveApi.filter(_.evessoRefreshToken === credential.refreshToken)
+        .map(_.evessoAccessToken).update(newAccessToken)
+    }
     val q =
       Http(baseUrl + "/verify")
         .method("GET")
@@ -101,6 +129,13 @@ private[this] class SSOClient(config: Config, publicDataClient: PublicDataClient
         .header("Authorization", s"Bearer ${credential.accessToken}")
     this.executeAsync[VerifyResponse](q, parseResponse[VerifyResponse])
       .flatMap(r => publicDataClient.fetchUserByCharacterId(r.CharacterID))
-    // TODO: handle expired access token
+      .recoverWith {
+        case ex: TokenExpiredException => for {
+          accessToken <- this.refreshAccessToken(credential.refreshToken)
+          newCredential <- Future(credential.copy(accessToken = accessToken))
+          res <- this.fetchUser(credential)
+          updateToken <- dbAgent.run(updateAccessTokenQuery(accessToken))
+        } yield res
+      }
   }
 }

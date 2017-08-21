@@ -24,3 +24,5 @@ case class PermissionBitEntry(name: String, bit_position: Int, description: Stri
     )
   }
 }
+
+class TokenExpiredException extends RuntimeException

@@ -5,6 +5,7 @@ import com.typesafe.config.Config
 import com.typesafe.scalalogging.LazyLogging
 import org.red.ceres.util._
 import org.red.iris.EveUserData
+import slick.jdbc.JdbcBackend
 
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -16,7 +17,8 @@ trait EveApiClientService {
   def fetchUser(characterId: Long): Future[EveUserData]
 }
 
-class EveApiClient(config: Config)(implicit ec: ExecutionContext) extends EveApiClientService with LazyLogging {
+class EveApiClient(config: Config)
+                  (implicit ec: ExecutionContext, dbAgent: JdbcBackend.Database) extends EveApiClientService with LazyLogging {
   private val publicDataClient = new PublicDataClient
   private val legacyClient = new LegacyClient(config, publicDataClient)
   private val ssoClient = new SSOClient(config, publicDataClient)
