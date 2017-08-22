@@ -42,6 +42,10 @@ class UserController(permissionController: => PermissionController,
                     (implicit dbAgent: JdbcBackend.Database, ec: ExecutionContext)
   extends UserService with LazyLogging {
 
+  def warmup(): Future[Unit] = {
+    dbAgent.run(Users.filter(_.id === 0).result).map(_ => ())
+  }
+
   def getOwnedCharacters(userId: Int): Future[NonEmptyList[EveUserData]] = {
     val q = EveApi.filter(_.ownedBy === userId).join(EveUserView)
       .on((api, view) => api.characterId === view.characterId)

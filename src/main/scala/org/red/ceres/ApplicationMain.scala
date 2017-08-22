@@ -8,8 +8,10 @@ import org.red.ceres.external.auth.EveApiClient
 import org.red.ceres.finagle.{PermissionServer, UserServer}
 import org.red.iris.finagle.clients.TeamspeakClient
 import org.red.iris.finagle.servers.{PermissionServer => TPermissionServer, UserServer => TUserServer}
+import slick.jdbc.PostgresProfile.api._
 
 import scala.concurrent.ExecutionContext.Implicits.global
+import scala.util.control.NonFatal
 
 
 object ApplicationMain extends App with LazyLogging {
@@ -26,7 +28,7 @@ object ApplicationMain extends App with LazyLogging {
   val permissionServer = new TPermissionServer(config).build(new PermissionServer(permissionController))
 
   // WARMUP
-  userController.loginSSO("WARMUP")
+  userController.warmup()
   // WARMUP END
 
   Await.result(userServer)
