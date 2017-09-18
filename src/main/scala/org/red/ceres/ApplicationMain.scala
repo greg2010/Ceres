@@ -31,5 +31,5 @@ object ApplicationMain extends App with LazyLogging {
   userController.warmup()
   // WARMUP END
 
-  Await.result(userServer)
+  Await.all(userServer, permissionServer)
 }
